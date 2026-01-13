@@ -249,6 +249,18 @@ socket.on("checkSkipStatus", ({ index }) => {
 
 
 
+// الكود الناقص اللي بيستلم الصورة ويخزنها
+app.post("/upload", upload.single("image"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  // بنرد على الفرونت إند باسم الملف اللي اتسيف
+  res.json({
+    filename: req.file.filename,
+    originalname: req.file.originalname,
+  });
+});
+
 
 
 
