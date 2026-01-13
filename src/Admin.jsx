@@ -48,7 +48,7 @@ export default function Admin({ logout }) {
 
 
     try {
-      const r = await axios.get( "          puzzle-game-production-1013.up.railway.app/images");
+      const r = await axios.get       ("https://puzzle-game-production-1013.up.railway.app/images");
       setSavedList(r.data || []);
     } catch (e) {
       console.error(e);
@@ -86,10 +86,6 @@ export default function Admin({ logout }) {
 
 
 
-    
-
-
-
 
     
 
@@ -109,14 +105,45 @@ export default function Admin({ logout }) {
     try {
       const fd = new FormData();
       fd.append("image", file);
-      const r = await axios.post("    puzzle-game-production-1013.up.railway.app/upload", fd, {
+
+
+
+
+
+
+
+
+      
+
+
+
+
+
+
+
+
+
+
+
+
+      
+
+
+
+
+
+
+      
+
+
+const r = await axios.post("https://puzzle-game-production-1013.up.railway.app/upload", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 20000,
       });
       const { filename, originalname } = r.data || {};
       if (!filename) throw new Error("Upload returned no filename");
       await axios.post(
-      " puzzle-game-production-1013.up.railway.app/save-image",
+   "https://puzzle-game-production-1013.up.railway.app/save-image",
 
 
 
@@ -150,6 +177,10 @@ export default function Admin({ logout }) {
     }
     setSaving(false);
   };
+
+
+
+
 
 
 
@@ -274,6 +305,10 @@ const styles = {
     borderRadius: 12,
     boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
   },
+
+
+
+  
   bigBox: { display: "flex", gap: 20, alignItems: "center" },
   previewBox: {
     width: 520,
@@ -294,6 +329,11 @@ const styles = {
     cursor: "pointer",
     marginRight: 8,
   },
+
+
+
+
+
   backBtn: {
     background: "#fff",
     color: "#333",
@@ -304,3 +344,13 @@ const styles = {
     marginLeft: 8,
   },
 };
+
+
+
+
+
+
+
+
+
+
