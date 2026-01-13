@@ -38,8 +38,29 @@ const encouragementNames = [
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // بدلاً من io("http://localhost:3001")
-const socket = io("  puzzle-game-production-1013.up.railway.app       ");
+const socket = io("https://puzzle-game-production-1013.up.railway.app");
 
 export default function Puzzle({ images = [], playerName = "Player" }) {
   const [gameImages, setGameImages] = useState([]);

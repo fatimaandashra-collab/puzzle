@@ -153,20 +153,39 @@ const r = await axios.post("https://puzzle-game-production-1013.up.railway.app/u
 
 
 
+
+
+
+
+
         { filename, originalname, duration, answer },
         { timeout: 10000 }
       );
       await fetchList();
       setFile(null);
       setPreviewUrl(null);
+
+
+
+
+
+
+
+      
       setAnswer("");
       if (fileRef.current) fileRef.current.value = "";
       alert("Image saved");                    
+
+
+
+
+
+
     } catch (e) {
       console.error("Upload error:", e);
       if (e.message && e.message.includes("Network Error")) {
         alert(
-          "Upload error: Network Error — تأكد من تشغيل السيرفر على puzzle-game-production-1013.up.railway.app           وأنه يسمح بالـ CORS."
+          "Upload error: Network Error — تأكد من تشغيل السيرفر على  https://puzzle-game-production-1013.up.railway.app               وأنه يسمح بالـ CORS."
         );
       } else {
         alert(
@@ -179,6 +198,13 @@ const r = await axios.post("https://puzzle-game-production-1013.up.railway.app/u
   };
 
 
+
+
+
+
+
+
+  
 
 
 

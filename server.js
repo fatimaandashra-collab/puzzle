@@ -262,9 +262,14 @@ socket.on("checkSkipStatus", ({ index }) => {
 
 
 
+
+
+
+
+
 app.post("/save-image", (req, res) => {
   const { filename, originalname, duration, answer } = req.body;
-  const fullUrl = `https://puzzle-game-production.up.railway.app/uploads/${filename}`;
+  const fullUrl = `https://puzzle-game-production-1013.up.railway.app/uploads/${filename}`;
 
   savedImages.push({
     filename, originalname,
