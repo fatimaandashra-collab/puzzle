@@ -1,3 +1,21 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -16,35 +34,6 @@ app.use(express.json());
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// التأكد من وجود مجلد الرفع
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
-    console.log("Created uploads directory");
-}
-
-
-
-
-
-
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, UPLOAD_DIR),
   filename: (_, file, cb) => {
@@ -55,37 +44,11 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-if (!fs.existsSync('./uploads')) {
-    fs.mkdirSync('./uploads');
-}
-
 // Game State
 let savedImages = [];
-let players = [];
-let questionProgress = {}; // { questionIndex: { answered: false, winners: [] } }
+let players = []; 
+let questionProgress = {}; 
+let gameStarted = false; // علامة لمعرفة هل اللعبة بدأت فعلاً أم لا
 let countdownTimer = null;
 let countdownValue = 3;
 
@@ -121,6 +84,7 @@ const startCountdown = () => {
     } else {
       clearInterval(countdownTimer);
       countdownTimer = null;
+      gameStarted = true; // اللعبة بدأت رسمياً
       io.emit("startCountdown", 0);
       io.emit("gameStarted", savedImages);
     }
@@ -135,71 +99,69 @@ const cancelCountdown = () => {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
-
 io.on("connection", (socket) => {
+  
+  // تعديل الـ Join لدعم العودة (Reconnection)
   socket.on("join", (name) => {
-    if (players.find(p => p.id === socket.id)) return;
-    players.push({ id: socket.id, name: name       , ready: false, score: 0 });
+    // ابحث هل اللاعب ده كان موجود قبل كدة؟
+    let p = players.find(x => x.name === name);
+    
+    if (p) {
+      // لاعب قديم رجع (رسترة أو نت قطع)
+      p.id = socket.id; // حدث الـ ID الجديد
+      console.log(`Player ${name} reconnected with ID ${socket.id}`);
+      
+      // لو اللعبة شغالة، ابعتله حالته الأخيرة فوراً
+      if (gameStarted) {
+        socket.emit("resumeGame", {
+          savedImages: savedImages,
+          currentIndex: p.currentIndex || 0,
+          currentScore: p.score,
+          questionStartTime: p.questionStartTime // عشان يحسب الوقت المتبقي
+        });
+      }
+    } else {
+      // لاعب جديد تماماً
+      players.push({ 
+        id: socket.id, 
+        name: name, 
+        ready: false, 
+        score: 0,
+        currentIndex: 0, // تتبع هو في أي سؤال
+        questionStartTime: null 
+      });
+    }
     emitPlayers();
   });
 
-  socket.on("requestScores", () => {
-    emitScores(socket.id); // نرسل للشخص اللي طلب فقط للحفاظ على الثبات
+  // تحديث مكان اللاعب والوقت اللي بدأ فيه السؤال
+  socket.on("updateMyProgress", ({ index }) => {
+    const p = players.find(x => x.id === socket.id);
+    if (p) {
+      p.currentIndex = index;
+      p.questionStartTime = Date.now(); // سجل لحظة دخوله السؤال
+    }
   });
 
-
-
+  socket.on("requestScores", () => {
+    emitScores(socket.id);
+  });
 
   socket.on("toggleReady", () => {
     const p = players.find(x => x.id === socket.id);
     if (!p) return;
     p.ready = !p.ready;
     emitPlayers();
-
-
     if (!p.ready) cancelCountdown();
-
-
-
-
-
-
   });
 
   socket.on("adminTriggerStart", () => {
     if (!allReady()) return socket.emit("adminError", { msg: "مش كل اللاعبين جاهزين" });
-    questionProgress = {}; // تصفير التقدم
+    questionProgress = {}; 
     startCountdown();
   });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-
-
-socket.on("checkSkipStatus", ({ index }) => {
+  socket.on("checkSkipStatus", ({ index }) => {
     if (questionProgress[index] && questionProgress[index].answered) {
       socket.emit("globalSkipEnable", { index });
     }
@@ -210,79 +172,38 @@ socket.on("checkSkipStatus", ({ index }) => {
     if (!p || !isCorrect) return;
 
     if (!questionProgress[index]) {
-      questionProgress[index] = { answered: true, winners: [socket.id] };
+      questionProgress[index] = { answered: true, winners: [p.name] };
       p.score += 2;
-      io.emit("globalSkipEnable", { index }); // تفعيل السكيب للكل في هذا السؤال
+      io.emit("globalSkipEnable", { index }); 
     } else {
-      if (!questionProgress[index].winners.includes(socket.id)) {
-        questionProgress[index].winners.push(socket.id);
+      if (!questionProgress[index].winners.includes(p.name)) {
+        questionProgress[index].winners.push(p.name);
         p.score += 1;
       }
     }
-    // تحديث السكور العام (لكن البازل سيعرض لقطة ثابتة)
     emitScores();
   });
 
   socket.on("disconnect", () => {
-    players = players.filter(p => p.id !== socket.id);
-    emitPlayers();
-    cancelCountdown();
+    const p = players.find(x => x.id === socket.id);
+    // لو اللعبة لسه مبدأتش، امسحه عادي
+    if (!gameStarted) {
+        players = players.filter(pl => pl.id !== socket.id);
+        emitPlayers();
+        cancelCountdown();
+    }
+    // لو اللعبة بدأت، مش هنمسحه من الـ array عشان لما يرجع يلاقي بياناته
   });
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// الكود الناقص اللي بيستلم الصورة ويخزنها
 app.post("/upload", upload.single("image"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-  // بنرد على الفرونت إند باسم الملف اللي اتسيف
-  res.json({
-    filename: req.file.filename,
-    originalname: req.file.originalname,
-  });
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  res.json({ filename: req.file.filename, originalname: req.file.originalname });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 app.post("/save-image", (req, res) => {
   const { filename, originalname, duration, answer } = req.body;
   const fullUrl = `https://puzzle-game-production-1013.up.railway.app/uploads/${filename}`;
-
   savedImages.push({
     filename, originalname,
     duration: Number(duration || 1),
@@ -292,29 +213,24 @@ app.post("/save-image", (req, res) => {
   res.json({ ok: true });
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/images", (_, res) => res.json(savedImages));
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const PORT = process.env.PORT || 3001; // يستخدم بورت السيرفر أو 3001 كاحتياطي
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
