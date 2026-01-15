@@ -1,67 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -69,6 +5,13 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
+
+
+
+
+
+
+
 
 const app = express();
 const server = http.createServer(app);
@@ -92,11 +35,15 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 
 // Game State
 let savedImages = [];
-let players = []; 
+let players = [];
 let questionProgress = {}; 
-let gameStarted = false; // علامة لمعرفة هل اللعبة بدأت فعلاً أم لا
 let countdownTimer = null;
 let countdownValue = 3;
+
+// متغيرات جديدة للحفاظ على استمرارية اللعبة
+let gameStarted = false;
+let currentQuestionIndex = 0;
+let remainingTime = 0;
 
 const emitPlayers = () => io.emit("updatePlayers", players);
 
@@ -130,7 +77,7 @@ const startCountdown = () => {
     } else {
       clearInterval(countdownTimer);
       countdownTimer = null;
-      gameStarted = true; // اللعبة بدأت رسمياً
+      gameStarted = true; // بدأت اللعبة
       io.emit("startCountdown", 0);
       io.emit("gameStarted", savedImages);
     }
@@ -146,47 +93,28 @@ const cancelCountdown = () => {
 };
 
 io.on("connection", (socket) => {
-  
-  // تعديل الـ Join لدعم العودة (Reconnection)
   socket.on("join", (name) => {
-    // ابحث هل اللاعب ده كان موجود قبل كدة؟
     let p = players.find(x => x.name === name);
-    
     if (p) {
-      // لاعب قديم رجع (رسترة أو نت قطع)
-      p.id = socket.id; // حدث الـ ID الجديد
-      console.log(`Player ${name} reconnected with ID ${socket.id}`);
-      
-      // لو اللعبة شغالة، ابعتله حالته الأخيرة فوراً
-      if (gameStarted) {
-        socket.emit("resumeGame", {
-          savedImages: savedImages,
-          currentIndex: p.currentIndex || 0,
-          currentScore: p.score,
-          questionStartTime: p.questionStartTime // عشان يحسب الوقت المتبقي
-        });
-      }
+      p.id = socket.id; // تحديث المعرف للاعب العائد
     } else {
-      // لاعب جديد تماماً
-      players.push({ 
-        id: socket.id, 
-        name: name, 
-        ready: false, 
-        score: 0,
-        currentIndex: 0, // تتبع هو في أي سؤال
-        questionStartTime: null 
+      players.push({ id: socket.id, name: name, ready: false, score: 0 });
+    }
+
+    // إذا كانت اللعبة شغالة، أرسل البيانات للاعب العائد
+    if (gameStarted) {
+      socket.emit("resumeGame", {
+        images: savedImages,
+        currentIndex: currentQuestionIndex,
+        remainingTime: remainingTime,
+        isFinished: currentQuestionIndex >= savedImages.length
       });
     }
     emitPlayers();
   });
 
-  // تحديث مكان اللاعب والوقت اللي بدأ فيه السؤال
-  socket.on("updateMyProgress", ({ index }) => {
-    const p = players.find(x => x.id === socket.id);
-    if (p) {
-      p.currentIndex = index;
-      p.questionStartTime = Date.now(); // سجل لحظة دخوله السؤال
-    }
+  socket.on("syncTimer", ({ time }) => {
+    remainingTime = time;
   });
 
   socket.on("requestScores", () => {
@@ -204,10 +132,12 @@ io.on("connection", (socket) => {
   socket.on("adminTriggerStart", () => {
     if (!allReady()) return socket.emit("adminError", { msg: "مش كل اللاعبين جاهزين" });
     questionProgress = {}; 
+    currentQuestionIndex = 0;
     startCountdown();
   });
 
   socket.on("checkSkipStatus", ({ index }) => {
+    currentQuestionIndex = index; // تحديث السؤال الحالي في السيرفر
     if (questionProgress[index] && questionProgress[index].answered) {
       socket.emit("globalSkipEnable", { index });
     }
@@ -216,29 +146,21 @@ io.on("connection", (socket) => {
   socket.on("playerAnswer", ({ isCorrect, index }) => {
     const p = players.find(x => x.id === socket.id);
     if (!p || !isCorrect) return;
-
     if (!questionProgress[index]) {
-      questionProgress[index] = { answered: true, winners: [p.name] };
+      questionProgress[index] = { answered: true, winners: [socket.id] };
       p.score += 2;
-      io.emit("globalSkipEnable", { index }); 
-    } else {
-      if (!questionProgress[index].winners.includes(p.name)) {
-        questionProgress[index].winners.push(p.name);
-        p.score += 1;
-      }
+      io.emit("globalSkipEnable", { index });
+    } else if (!questionProgress[index].winners.includes(socket.id)) {
+      questionProgress[index].winners.push(socket.id);
+      p.score += 1;
     }
     emitScores();
   });
 
   socket.on("disconnect", () => {
-    const p = players.find(x => x.id === socket.id);
-    // لو اللعبة لسه مبدأتش، امسحه عادي
-    if (!gameStarted) {
-        players = players.filter(pl => pl.id !== socket.id);
-        emitPlayers();
-        cancelCountdown();
-    }
-    // لو اللعبة بدأت، مش هنمسحه من الـ array عشان لما يرجع يلاقي بياناته
+    // لا نحذف اللاعب فوراً لتمكينه من العودة بعد الرفرش
+    // سيتم حذفه فقط إذا أغلق الصفحة تماماً ولم يعد (اختياري)
+    emitPlayers();
   });
 });
 
@@ -259,6 +181,11 @@ app.post("/save-image", (req, res) => {
   res.json({ ok: true });
 });
 
+// تصفير القائمة عند الطلب لضمان خصوصية الأدمن الجديد كما طلبت
+app.get("/images", (_, res) => {
+  const temp = [...savedImages];
+  savedImages = []; // تصفير القائمة فور القراءة لضمان عدم رؤيتها من أدمن آخر
+  res.json(temp);
 
 
 
@@ -268,16 +195,14 @@ app.post("/save-image", (req, res) => {
 
 
 
+});
 
 
 
 
 
-
-app.get("/images", (_, res) => res.json(savedImages));
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
-
