@@ -208,7 +208,26 @@ app.get("/images", (_, res) => {
 
 
 
-const PORT = process.env.PORT || 8080;
+
+const PORT = process.env.PORT || 3001; // يستخدم بورت السيرفر أو 3001 كاحتياطي
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
 });
